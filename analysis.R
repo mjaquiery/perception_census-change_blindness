@@ -61,6 +61,12 @@ dt <- d %>%
     complex = bitwAnd(tt, 1),
     dynamic = bitwAnd(tt, 2),
     masked = bitwAnd(tt, 4)
+  ) %>%
+  mutate(
+    id = factor(id),
+    complex = factor(ifelse(complex, "complex", "simple")),
+    dynamic = factor(ifelse(dynamic, "dynamic", "static")),
+    masked = factor(ifelse(masked, "masked", "unmasked"))
   )
 
 
@@ -101,15 +107,8 @@ tribble(
 # is what we actually care about.
 #
 # We want a within-subjects ANOVA because all subjects do all conditions
-for_aov <- final %>%
-  mutate(
-    id = factor(id),
-    complex = factor(ifelse(complex, "complex", "simple")),
-    dynamic = factor(ifelse(dynamic, "dynamic", "static")),
-    masked = factor(ifelse(masked, "masked", "unmasked"))
-  )
 ezANOVA(
-  data = for_aov,
+  data = final,
   dv = t,
   wid = id,
   within = c('complex', 'dynamic', 'masked')
@@ -117,7 +116,7 @@ ezANOVA(
 
 # Details
 # Means for each trial type
-for_aov %>%
+final %>%
   group_by(complex, dynamic, masked) %>%
   reframe(mean_cl_normal(t))
 
@@ -126,15 +125,30 @@ for_aov %>%
 # T-test of complex static masked vs complex static unmasked
 # We would expect to see a significant effect here to indicate change blindness
 # has occurred.
-for_t <- for_aov %>%
-  filter(complex == 'complex', dynamic == 'static')
-t.test(t ~ masked, data = for_t)
+#
+# This is a paired t-test on means.
+for_t <- clean %>%
+  filter(complex == 'complex', dynamic == 'static') %>%
+  group_by(id, masked) %>%
+  summarise(t = mean(t), .groups = 'drop') %>%
+  nest(d = -id) %>%
+  mutate(ok = map_lgl(d, ~ nrow(.) == 2)) %>%
+  filter(ok) %>%
+  unnest(cols = d)
+t.test(t ~ masked, data = for_t, paired = T)
 
 # And same for dynamic trials
 # We would expect to see a significant effect here to indicate change blindness
 # has occurred.
-for_t_dynamic <- for_aov %>% filter(complex == 'complex', dynamic == 'dynamic')
-t.test(t ~ masked, data = for_t_dynamic)
+for_t_dynamic <- clean %>%
+  filter(complex == 'complex', dynamic == 'dynamic') %>%
+  group_by(id, masked) %>%
+  summarise(t = mean(t), .groups = 'drop') %>%
+  nest(d = -id) %>%
+  mutate(ok = map_lgl(d, ~ nrow(.) == 2)) %>%
+  filter(ok) %>%
+  unnest(cols = d)
+t.test(t ~ masked, data = for_t_dynamic, paired = T)
 
 # Many participants have missing trial types, making them invalid for
 # within-subjects ANOVA. This means that lots of participants need to be
@@ -143,13 +157,7 @@ t.test(t ~ masked, data = for_t_dynamic)
 # This gives us a sense of whether the effect pertains in the group as a whole.
 by_tt <- clean %>%
   group_by(id, complex, dynamic, masked) %>%
-  summarise(t = mean(t), .groups = 'drop') %>%
-  mutate(
-    id = factor(id),
-    complex = factor(ifelse(complex, "complex", "simple")),
-    dynamic = factor(ifelse(dynamic, "dynamic", "static")),
-    masked = factor(ifelse(masked, "masked", "unmasked"))
-  )
+  summarise(t = mean(t), .groups = 'drop')
 ezANOVA(
   data = by_tt,
   dv = t,
