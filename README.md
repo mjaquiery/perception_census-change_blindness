@@ -39,3 +39,6 @@ We expect to see an interaction between complexity and masking (complex masked t
 We also include direct t-tests of complex trials across masking condition separately for dynamic and static trials.
 Anyone interested in classic change blindness results only should focus on the t-test on the static data.
 
+## Write-up 
+
+Some written components are available in the `docs` directory.
