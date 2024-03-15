@@ -1,0 +1,73 @@
+/* Style.css */
+
+#outcome {
+	background-color: white; 
+	border: 2px solid black; 
+	border-radius: 25px; 
+	width: 600px; 
+	padding-top: 1%; 
+	padding-bottom: 10%; 
+	text-align: center;
+}
+
+#outcome p {
+	font-size: 2em;
+}
+
+#results {
+	padding: 20px;
+}
+
+#results table {
+	background-color: #F3FFB2;
+	width: 100%;
+	padding-top: 10%;
+	padding-left: 10%; 
+	padding-right: 10%; 
+	border: 1px solid black;
+	border-radius: 25px;
+	border-collapse: collapse; 
+	text-align: center; 
+	vertical-align: center;
+	cellpadding: 0px; 
+}
+
+#results p {
+	font-size: 1em;
+}
+
+#results thead {
+	height: 30px;
+	background-color: #DCFFB2;
+}
+
+#results td {
+	padding: 5px;
+}
+
+#results .lead, .you {
+	background-color: #DCFFB2;
+}
+
+#results .set td {
+	background-color: #B2FF2D;
+}
+
+#results .all td {
+	background-color: #B2FF2D;	
+}
+
+.error {
+	color: red;
+}
+
+.ui {
+	width: 100%;
+	padding: 0px;
+	text-align: center;
+	margin-bottom: -5%;
+}
+
+.ui button {
+	border-radius: 0.5em;
+}

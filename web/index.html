@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<link rel="stylesheet" type="text/css" href="style.css">
+	</head>
+  <body style="background-color: #cccccc;">
+	<div id="pre">
+		<p>Gametest</p>
+	</div>
+    <div id="game" style="margin-left: 10%; float: left;"><p class="error">Error: JavaScript is not enabled.</p></div>
+	<div id="textlog" style="float: left; margin-left: 10%;">
+	</div>
+	
+	<script type="text/javascript" src="lib/crafty.js"></script>
+    <script>
+		// Constants
+		var TWO_OBJECT_TRIAL_PROPORTION = 0.3;
+		var	ROTATION_TRIAL_PROPORTION = 0.5;
+		var	UNMASKED_TRIAL_PROPORTION = 0.5;
+		var	TIME_A = 700;
+		var	TIME_MASK = 200;
+		var	TIME_APRIME = 700;
+		var	SCREEN_SIZE = 700;
+		var	PAWN_MOVE_SPEED = 0.15; // pixels per milisecond
+		var	BACKGROUND_COLOR = "white";
+		var BASE_URL = "http://localhost/backend.php";
+		
+		Crafty.init(SCREEN_SIZE, SCREEN_SIZE, document.getElementById('game'));
+		Crafty.background(BACKGROUND_COLOR);
+		
+		// Variables
+		var iT = 0;
+		var bSuccess = false;
+		var iTrialType = 0;
+		
+		Crafty.c("Marker", {
+			init: function(){
+				this.addComponent("2D, Canvas, Color");
+				this.h = 5;
+				this.w = 5; 
+				this.color("black");
+				return this;
+			},
+			
+			place: function(x, y) {
+				this.x = x;
+				this.y = y;
+				return this;
+			}
+		});
+		
+		/*
+		 * Returns a random integer between min and max
+		 * Using Math.round() will give you a non-uniform distribution!
+		 
+		 Thanks http://roshanbh.com.np/2008/09/get-random-number-range-two-numbers-javascript.html for helping me stay lazy.
+		 */
+		function getRandomInt (min, max) {
+			return Math.floor(Math.random() * (max - min + 1)) + min;
+		}
+				
+		// Gives the slope of a line between point a (ax, ay) and point b (bx, by).
+		// Returns -1 as slope of vertical lines
+		function getSlope(ax, ay, bx, by) {
+			var dx = ax - bx;
+			var dy = ay - by;
+			if(dx == 0)
+				return 500;
+			else
+				return dy/dx;
+		}
+		
+		// Gives a random point on a circle of diameter d around point a (ax, ay)
+		// Returns the point x,y coordinates
+		function getRandomPoint(ax, ay, d) {
+			var d2 = d * d; // We can use pythagoras, so first square the hypotenuse
+			var dx = getRandomInt(0, d2); // Then take a random portion of that distance to be x-change
+			var dy = d2 - dx; // And the rest is y-change
+						
+			dx = Math.sqrt(dx);
+			dy = Math.sqrt(dy);
+						
+			//log("getRandomPoint: d = "+d+"; dx = "+dx+"; dy = "+dy);
+			
+			var x = (Math.random() > 0.5) ? ax + dx : ax - dx;
+			var y = (Math.random() > 0.5) ? ay + dy : ay - dy;
+			return [x, y];
+		}
+		
+		// Returns the coordinates of a point on the circumference of a circle with origin
+		// ax, ay; radius r; and at angle a radians
+		function getCircumfrencePoint(ax, ay, r, a, bRound = true) {
+			var x = ax + (r * Math.cos(a));
+			var y = ay + (r * Math.sin(a));
+			if(bRound) {
+				x = Math.round(x);
+				y = Math.round(y);
+			}
+			return [x,y];
+		}
+		
+		// Returns a point[x,y] representing a rotation of the trajcetory
+		// ax,ay -> bx,by by 90degrees anti/clockwise
+		// Failsafe returns 180 degree rotation
+		function getOffsetPoint(ax, ay, bx, by, i) {
+			//Crafty.e("Marker").place(ax, ay).color("black");
+			//Crafty.e("Marker").place(bx, by).color("red");
+			var myVec = new Crafty.math.Vector2D(ax, ay);
+			var tVec = new Crafty.math.Vector2D(bx, by);
+			var distance = myVec.distance(tVec);
+			var point = [0,0];
+			var angle = (Math.random() < 0.5 ? 90 : 270);
+			if( i > 5)
+				angle = Math.PI; // escape case - go back the way you came (180 degrees)
+			var a = myVec.angleTo(tVec) + (angle * Math.PI / 180);
+			point = getCircumfrencePoint(ax, ay, distance, a);
+			//Crafty.e("Marker").place(point[0], point[1]).color("pink");	
+			return [point[0], point[1]];
+		}
+				
+		
+		function xml_to_string(xml_node)
+		{
+			if (xml_node.xml)
+				return xml_node.xml;
+			else if (XMLSerializer)
+			{
+				var xml_serializer = new XMLSerializer();
+				return xml_serializer.serializeToString(xml_node);
+			}
+			else
+			{
+				alert("ERROR: Extremely old browser");
+				return "";
+			}
+		}
+				
+		// Takes XML data provided via AJAX and displays it in the debrief panel
+		function useAJAX(data) {
+			log("Received AJAX response:");
+			log(xml_to_string(data));
+			var e = data.getElementsByTagName("ERROR");
+			var r = data.getElementsByTagName("RESULTS");
+			t = e[0].getElementsByTagName("TEXT")[0].childNodes[0].nodeValue;
+			m = r[0].getElementsByTagName("MEAN")[0].childNodes[0].nodeValue;
+			
+			log("ErrorText: "+t);
+			log("Mean: "+m);
+			
+			if(t.length > 0) {
+				document.getElementById("results").innerHTML = "<p class=\"error\">"+t+"</p>";
+			}
+			else {
+				document.getElementById("results").innerHTML = '					<table>\
+							<thead>\
+								<tr>\
+									<td colspan="3"><strong>Trial Results</strong></td>\
+								</tr>\
+							</thead>\
+							<tr class="lead">\
+								<td>&nbsp;</td>\
+								<th>Success Rate</th>\
+								<th>Time Taken</th>\
+							</tr>\
+							<tr class="set">\
+								<td><strong>Last Set</strong></td>\
+								<td>'+m+'</td>\
+								<td>'+m+'s</td>\
+							</tr>\
+							<tr class="you">\
+								<td><strong>Average (you)</strong></td>\
+								<td>'+m+'s</td>\
+								<td>'+m+'s</td>\
+							</tr>\
+							<tr class="all">\
+								<td><strong>Average (all)</strong></td>\
+								<td>'+m+'s</td>\
+								<td>'+m+'s</td>\
+							</tr>\
+						</table>';
+			}			
+		}
+		
+		// Sends an AJAX request
+		function getAJAX(url) {
+			var xhttp = new XMLHttpRequest();
+			log("Beginning AJAX request");
+			xhttp.onreadystatechange = function() {
+				log("Ready State Change");
+				log("ReadyState: "+xhttp.readyState);
+				//log("Status: "+xhttp.status);
+			  if (xhttp.readyState == 4) {
+					useAJAX(xhttp.responseXML);
+			  }
+			}
+			log("Opening...");
+			xhttp.open("GET", url, true);
+			log("Sending...");
+			xhttp.send();
+			log("Sent AJAX request: "+url);
+		}
+			
+		function log(text, bNewParagraph = true) {
+			if(bNewParagraph)
+				document.getElementById("textlog").innerHTML += "<p>"+text+"</p>";
+			else
+				document.getElementById("textlog").innerHTML += "<br/>"+text;
+		
+		}
+		function clearLog() {
+			document.getElementById("textlog").innerHTML = "";
+			log("<p><u>Log</u></p>");
+		}
+		
+		clearLog();
+		
+		
+		function oTrial() {
+			/* returns a trial type specifying: 
+			iObjects - number of objects
+			bTrajectory - whether trial is Trajectory
+			bMasked - whether trial is masked
+			Type - flag set specifying the above
+			
+			considerations:
+				continious object number variation? - might make stats a nightmare to do
+				include motion on/off set trials?
+				use trajectory change vs orientation+trajectory change? - this won't tell us anything interesting
+			*/
+			
+			this.iObjects = (Math.random() <= TWO_OBJECT_TRIAL_PROPORTION ? 2 : 6); 
+			this.bTrajectory = (Math.random() <= ROTATION_TRIAL_PROPORTION ? false : true);
+			this.bMasked = (Math.random() <= UNMASKED_TRIAL_PROPORTION ? false : true);
+			this.Type = (this.iObjects==2 ? 0 : 1) + (this.bTrajectory ? 0 : 2) + (this.bMasked ? 0 : 4);
+			
+			return this;
+		};
+
+		// Pawns are the viisble objects which move on the screen
+		Crafty.c("pawn", {
+			init: function() {
+				this.addComponent("2D, Canvas, Color, Mouse, Tween");
+				this.w = 50;
+				this.h = 25;
+				this.bClickable = false;
+				this.bTarget = false;
+				this.bHidden = false;
+				this.anim = false;
+				this.endPoint = [-1, -1];
+				this.targetPoint = [-1, -1];
+				this.startPoint = [-1, -1];
+				this.startColor = false;
+				// mousedown event - trials end when a pawn is clicked
+				this.bind("Click", function(MouseEvent) {
+					if(!this.bClickable)
+						return this;
+					iT += new Date().getTime();
+					bSuccess = this.bTarget;
+					log( (bSuccess ? "Success" : "Failure" )+" in "+iT+"ms");
+					Crafty.enterScene("Outcome");
+				});
+				return this;
+			},
+
+			// Directly positions a pawn at the given xy coordinates
+			place: function(x, y) {
+				this.x = x;
+				this.y = y;
+				this.startPoint = [this.x, this.y];
+				return this;
+			},
+			
+			// Enables clicking on the object by allowing the mousedown event to run
+			setClickable: function() {
+				this.bClickable = true;
+				return this;
+			},
+			
+			// Sets the rotation of the pawn
+			setRotation: function(x) {
+				// rotate this object through x degrees
+				this.origin("center");
+				this.rotation = x;
+				return this;
+			},
+			
+			// Sets the pawn rotation to a random orientation
+			setRandomRotation: function() {
+				this.setRotation(getRandomInt(0,360));
+				return this;
+			},
+			
+			// Hides the pawn by changing its colour to the background colour
+			hide: function(bHide = true) {
+				//this.visible = !bHide;
+				//log("Hiding? "+bHide);
+				if(bHide)	{
+					this.startColor = this.color();
+					//log("StartColor: "+this.startColor);
+					this.color(BACKGROUND_COLOR);
+				}
+				else	{
+					if(this.startColor == false)
+						return this;
+					this.color(this.startColor);
+				}
+				//log( (bHide ? "Hid" : "Unhid") + " pawn");
+				return this;
+			},
+			
+			// Finds a trajectory between the current position and a random point on the circumference of the 
+			// circle given by origin (current position) and radius (distance) where distance is a function of
+			// duration and the speed at which the pawns move
+			getNewTrajectory: function(duration) {
+				var ax = this.x;
+				var ay = this.y;
+				//log("Startpoint: "+ax+" , "+ay);
+				var bx = 0;
+				var by = 0;
+				var point = [0,0];
+				//var slope = 0;
+				var distance = PAWN_MOVE_SPEED * (duration);
+				//log("Distance: "+distance);
+				while( (bx > SCREEN_SIZE - this.w) ||
+						(by > SCREEN_SIZE - this.h) ||
+						(bx < this.w) ||
+						(by < this.h) ) {
+					point = getRandomPoint(ax, ay, distance);
+					bx = point[0];
+					by = point[1];
+					// round it until we find a reason not to
+					bx = Math.round(bx);
+					by = Math.round(by);
+					//log("Trying endpoint: "+bx+" , "+by);
+				}
+				this.endPoint = [bx, by];
+				//log("Endpoint: "+this.targetPoint[0]+" , "+this.targetPoint[1]);
+				return this;
+			},
+			
+			// Calculates a new trajectory at 90 degrees to the current one
+			changeTrajectory: function(duration) {
+				//log("Changing Trajectory");
+				if(this.targetPoint[0] != -1)
+					return this;
+				//log("Calculating new alternate trajectory");
+				var distance = duration * PAWN_MOVE_SPEED;
+				//log("Target distance: "+distance);
+				var ax = this.x;
+				var ay = this.y;
+				var bx = 0;
+				var by = 0;
+				var point = [0,0];
+				var i = 0;
+				while( (bx > SCREEN_SIZE - this.w) ||
+						(by > SCREEN_SIZE - this.h) ||
+						(bx < this.w) ||
+						(by < this.h) ) {
+					//log("Looking for new target points...");
+					point = getOffsetPoint(this.x, this.y, this.endPoint[0], this.endPoint[1], i++);
+					bx = point[0];
+					by = point[1];
+					// round it until we find a reason not to
+					bx = Math.round(bx);
+					by = Math.round(by);
+				}
+				this.targetPoint = [bx, by];
+				//log("New Trajectory: "+ax+" , "+ay+" -> "+bx+" , "+by);
+				//log("Distance: "+Math.round(Math.sqrt( (bx-ax)*(bx-ax) + (by-ay)*(by-ay) )));
+				return this;
+			},
+			
+			// Causes the pawn to move smoothly between its starting position and its target position
+			// along its trajectory
+			animate: function(duration, bUseTargetPoint = false) {
+				if(bUseTargetPoint && this.targetPoint[0] != -1)
+					this.tween({x: this.targetPoint[0], y: this.targetPoint[1]},duration);
+				else	
+					this.tween({x: this.endPoint[0], y: this.endPoint[1]},duration);
+				return this;
+			},
+			
+			// Returns the pawn to its initial position and unhides it
+			reset: function() {
+				this.place(this.startPoint[0], this.startPoint[1]);
+				this.hide(false);
+				return this;
+			}
+		});
+		
+		// The splash screen is the welcome screen
+		// This screen includes consent/ethics information, trial instructions, etc.
+		Crafty.scene("Splash", function() {
+					
+		});
+		
+		// This scene runs a given trial. 
+		// Trial type is randomly assigned.
+		// Considerations - 
+		//		Run trials in sets between providing feedback?
+		Crafty.scene("Trial", function() {
+			// Find out what kind of trial we are going to be
+			var myTrial = oTrial();
+			iTrialType = myTrial.Type;
+			var aObjects = [];
+			var myDuration = TIME_A + TIME_APRIME + (myTrial.bMasked ? TIME_MASK * 2 : 0)
+			log("Trial Details:", false);
+			log("Objects: " + myTrial.iObjects, false);
+			log("Trajectory? " + myTrial.bTrajectory, false);
+			log("Masked? " + myTrial.bMasked, false);
+			log("Type: "+iTrialType, false);
+			
+			for( var i = 0; i < myTrial.iObjects; i++) {
+				// make the appropriate number of objects
+				aObjects[i] = Crafty.e("pawn");
+			}
+			
+			for( var i = 0; i < aObjects.length; i++) {
+				aObjects[i].setRandomRotation().place(getRandomInt(50,SCREEN_SIZE-50),getRandomInt(50,SCREEN_SIZE-50));
+				// Using random colours but keeping them quite dark
+				aObjects[i].color(getRandomInt(0,200),getRandomInt(0,200),getRandomInt(0,200));
+			}
+			log("Initalised pawns.");
+			
+			// Set a target pawn
+			var oTarget = aObjects[getRandomInt(0, aObjects.length-1)];
+			oTarget.bTarget = true;
+			//oTarget.color("black");
+						
+			// Flicker functions
+			// Set trajectories
+			function flick_start() {
+				// first time through we need new trajectories
+				if(oTarget.endPoint[0] == -1) { 
+					for(var i = 0; i < aObjects.length; i++) {
+						// calculate trajectories						
+						aObjects[i].getNewTrajectory(myDuration).animate(myDuration);
+					}
+				}
+				// on subsequent runs we just go back to start and follow pre-existing trajectory
+				else {
+					for(var i = 0; i < aObjects.length; i++) {
+						aObjects[i].reset().animate(myDuration);
+					}
+				}
+			}
+			
+			// Deploy the mask
+			function flick_mask(bMask = true) {
+				for(var i = 0; i < aObjects.length; i++)
+					aObjects[i].hide(bMask);
+			}
+			
+			// Enable clicking
+			function flick_click() {
+				for(var i = 0; i < aObjects.length; i++)
+					aObjects[i].setClickable();
+				
+				iT -= new Date().getTime();
+			}
+			
+			var flick_state = 0; // Tracks where we are in the changing/masking process
+			var bInitial = true; // Tracks whether this is the first runthrough
+			
+			// Steps the flick_state through its desired states
+			function flick_rotate() {
+				// Unmasked trials only need the visible stages
+				if(!myTrial.bMasked) {
+					flick_state = (flick_state == 0) ? 2 : 0;
+				}
+				// Masked trials use all stages
+				else {
+					flick_state++;
+					if(flick_state > 3)
+						flick_state = 0;
+				}
+			}
+			
+			// Changes the target trajectory/orientation as specified by the trial type
+			function flick_alter() {
+				if(myTrial.bTrajectory)
+					oTarget.changeTrajectory(myDuration).animate(myDuration/2, true);
+				else
+					oTarget.setRotation(45);
+				return;
+			}
+			
+			// Resets the rotation of the target (trajectory reset handled by the reset function for all objects)
+			function flick_dealter() {
+				if(!myTrial.bTrajectory)
+					oTarget.setRotation(-45);
+				return;
+			}
+			
+			// The flick function which executes the various flicker steps
+			var flick = function() {
+				// Start state (A)
+				if(flick_state == 0) {
+					if(!bInitial)
+						flick_dealter();
+					flick_start();
+					flick_mask(false);
+					t = TIME_A;
+				}
+				// A->A' mask
+				if(flick_state == 1) {
+					flick_mask(true);
+					t = TIME_MASK;
+				}
+				// Altered state (A')
+				if(flick_state == 2) {
+					flick_alter();
+					flick_mask(false);
+					t = TIME_APRIME;
+					if(bInitial) {
+						flick_click();
+						bInitial = false;						
+					}
+				}
+				// A'->A mask
+				if(flick_state == 3) {
+					flick_mask(true);
+					t = TIME_MASK;
+				}
+				
+				flick_rotate();	
+				Crafty.e("Delay").delay(flick, t, 0);
+			};
+			
+			// This timer begins the initial flicker trial
+			// This is reset with an appropriate new delay each time flick() runs
+			var flicker = Crafty.e("Delay").delay(flick, TIME_A, 0);
+						
+			// Does movement continue during mask? - might we get different results either way; should we test this?
+			
+		});
+		
+		// This scene provides feedback on performance and sends the necessary data to the PHP page to be logged for analysis
+		// This scene should also provide access to starting a new trial
+		Crafty.scene("Outcome", function() {
+			log("Submitting data:", false);
+			log("Trial Type: "+iTrialType, false);
+			log("Success? "+bSuccess, false);
+			log("Time Taken: "+iT, false);
+			var url = BASE_URL+"?tt="+iTrialType+"&s="+(bSuccess? 1 : 0)+"&t="+iT+"&rr=1";
+			log("Submit URL: "+url);
+			
+			// Set up the feedback screen
+			document.getElementById("game").innerHTML = '			<div id="outcome">\
+				<p>Thank you!</p>\
+				<div id="results">\
+					<p>Saving results...</p>\
+				</div>\
+				<table class="ui">\
+					<tr>\
+						<td><button onclick="runTrial()">Go Again</button></td>\
+					</tr>\
+				</table>\
+			</div>';
+			// Submit data and handle feedback
+			log("Get AJAX:");
+			getAJAX(url);
+			
+		});
+		
+		function runTrial() {
+			document.getElementById("game").innerHTML = "";
+			Crafty.enterScene("Trial");
+		}
+		// Beginning of the procedural code
+		log("Beginning scene: Trial");
+		runTrial();
+    </script>
+	
+  </body>
+</html>
