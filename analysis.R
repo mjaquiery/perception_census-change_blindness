@@ -9,11 +9,9 @@
 # Task description:                               #
 # Participants see a screen with 2 (simple)       #
 # or 6 (complex) rectangles of different colours. #
-# In 'dynamic' trials, these are moving in        #
-# straight lines, in 'static' trials they are     #
-# stationary.                                     #
+#                                                 #
 # One object per trial alters its trajectory      #
-# ('dynamic' trials) or its orientation ('simple' #
+# ('trajectory' trials) or its orientation        #
 # trials). This is the target object that         #
 # participants have to click to successfully      #
 # complete the trial.                             #
@@ -32,8 +30,8 @@
 # trials (where complexity is high and changes are#
 # masked).                                        #
 #                                                 #
-# Classic change blindness is the 'static'        #
-# version of the task. The 'dynamic' version was  #
+# Classic change blindness is the 'orientation'        #
+# version of the task. The 'trajectory' version was  #
 # developed as a student project by Matt Jaquiery #
 # and Ron Chrisley.                               #
 #                                                 #
@@ -53,19 +51,19 @@ d <- read_csv("data/preprocessed.csv")
 #
 # From source code (index.html:218)
 # Complex trials have 6 objects to track, non-complex have 2
-# Dynamic trials' objects follow a trajectory, non-dynamic trials stay still
+# Dynamic trials' objects follow a trajectory, non-trajectory trials stay still
 # Masked trials blip the display off while the change takes place
 
 dt <- d %>%
   mutate(
     complex = bitwAnd(tt, 1),
-    dynamic = bitwAnd(tt, 2),
-    masked = bitwAnd(tt, 4)
+    trajectory = !bitwAnd(tt, 2),
+    masked = !bitwAnd(tt, 4)
   ) %>%
   mutate(
     id = factor(id),
     complex = factor(ifelse(complex, "complex", "simple")),
-    dynamic = factor(ifelse(dynamic, "dynamic", "static")),
+    trajectory = factor(ifelse(trajectory, "trajectory", "orientation")),
     masked = factor(ifelse(masked, "masked", "unmasked"))
   )
 
@@ -80,9 +78,18 @@ ok <- dt %>% filter(s == T)
 # We limit max time to a minute here.
 clean <- ok %>% filter(t < 6e4)
 
+# Masked trials take 200ms longer to play per run-through,
+# so we subtract 200ms from the first 900ms of the response time
+# and then 200ms for each 1600ms thereafter (700+200+700)
+fixed <- clean %>%
+  mutate(
+    t = if_else(masked == "masked" & t > 900, t - 200, t),
+    t = if_else(masked == "masked", t - (floor(t / 1600) * 200), t)
+  )
+
 # Final analysis set should only include participants who did
 # at least one trial for all trial types
-final <- clean %>%
+final <- fixed %>%
   nest(d = -id) %>%
   mutate(ok = map_lgl(d, ~ (unique(.$tt) %>% length()) == 8)) %>%
   filter(ok) %>%
@@ -101,6 +108,36 @@ tribble(
 )
 
 # Primary analysis --------------------------------------------------------
+#
+# T-test of complex orientation masked vs complex orientation unmasked
+# We would expect to see a significant effect here to indicate change blindness
+# has occurred.
+#
+# This is a paired t-test on means.
+for_t <- fixed %>%
+  filter(complex == 'complex', trajectory == 'orientation') %>%
+  group_by(id, masked) %>%
+  summarise(t = mean(t), .groups = 'drop') %>%
+  nest(d = -id) %>%
+  mutate(ok = map_lgl(d, ~ nrow(.) == 2)) %>%
+  filter(ok) %>%
+  unnest(cols = d)
+t.test(t ~ masked, data = for_t, paired = T)
+
+# Secondary analysis ------------------------------------------------------
+
+# And same for trajectory trials
+# We would expect to see a significant effect here to indicate change blindness
+# has occurred.
+for_t_trajectory <- fixed %>%
+  filter(complex == 'complex', trajectory == 'trajectory') %>%
+  group_by(id, masked) %>%
+  summarise(t = mean(t), .groups = 'drop') %>%
+  nest(d = -id) %>%
+  mutate(ok = map_lgl(d, ~ nrow(.) == 2)) %>%
+  filter(ok) %>%
+  unnest(cols = d)
+t.test(t ~ masked, data = for_t_trajectory, paired = T)
 
 # Change blindness is defined as the interaction between masking and complexity.
 # We may see main effects and interactions, but the complex:masked interaction
@@ -111,57 +148,27 @@ ezANOVA(
   data = final,
   dv = t,
   wid = id,
-  within = c('complex', 'dynamic', 'masked')
+  within = c('complex', 'trajectory', 'masked')
 )
 
 # Details
 # Means for each trial type
 final %>%
-  group_by(complex, dynamic, masked) %>%
+  group_by(complex, trajectory, masked) %>%
   reframe(mean_cl_normal(t))
-
-# Secondary analysis ------------------------------------------------------
-
-# T-test of complex static masked vs complex static unmasked
-# We would expect to see a significant effect here to indicate change blindness
-# has occurred.
-#
-# This is a paired t-test on means.
-for_t <- clean %>%
-  filter(complex == 'complex', dynamic == 'static') %>%
-  group_by(id, masked) %>%
-  summarise(t = mean(t), .groups = 'drop') %>%
-  nest(d = -id) %>%
-  mutate(ok = map_lgl(d, ~ nrow(.) == 2)) %>%
-  filter(ok) %>%
-  unnest(cols = d)
-t.test(t ~ masked, data = for_t, paired = T)
-
-# And same for dynamic trials
-# We would expect to see a significant effect here to indicate change blindness
-# has occurred.
-for_t_dynamic <- clean %>%
-  filter(complex == 'complex', dynamic == 'dynamic') %>%
-  group_by(id, masked) %>%
-  summarise(t = mean(t), .groups = 'drop') %>%
-  nest(d = -id) %>%
-  mutate(ok = map_lgl(d, ~ nrow(.) == 2)) %>%
-  filter(ok) %>%
-  unnest(cols = d)
-t.test(t ~ masked, data = for_t_dynamic, paired = T)
 
 # Many participants have missing trial types, making them invalid for
 # within-subjects ANOVA. This means that lots of participants need to be
 # excluded.
 # Another approach is a between subjects analysis on mean t per trial type.
 # This gives us a sense of whether the effect pertains in the group as a whole.
-by_tt <- clean %>%
-  group_by(id, complex, dynamic, masked) %>%
+by_tt <- fixed %>%
+  group_by(id, complex, trajectory, masked) %>%
   summarise(t = mean(t), .groups = 'drop')
 ezANOVA(
   data = by_tt,
   dv = t,
   wid = id,
-  between = c('complex', 'dynamic', 'masked')
+  between = c('complex', 'trajectory', 'masked')
 )
 
