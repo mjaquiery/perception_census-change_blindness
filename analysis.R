@@ -42,6 +42,7 @@
 renv::restore()
 library(tidyverse)
 library(ez)
+library(bayesplay)
 
 # Load data ---------------------------------------------------------------
 
@@ -87,13 +88,23 @@ fixed <- clean %>%
     t = if_else(masked == "masked", t - (floor(t / 1600) * 200), t)
   )
 
-# Final analysis set should only include participants who did
-# at least one trial for all trial types
-final <- fixed %>%
+# The set for testing is participants who have at least one trial in
+# Complex Orientation Masked and at least one trial in
+# Complex Orientation Unmasked.
+#
+# Where participants have more than one trial of the appropriate type,
+# the mean of their trials is used.
+for_t <- fixed %>%
+  filter(complex == 'complex', trajectory == 'orientation') %>%
+  group_by(id, masked) %>%
+  summarise(t = mean(t), .groups = 'drop') %>%
   nest(d = -id) %>%
-  mutate(ok = map_lgl(d, ~ (unique(.$tt) %>% length()) == 8)) %>%
+  mutate(ok = map_lgl(d, ~ nrow(.) == 2)) %>%
   filter(ok) %>%
   unnest(cols = d)
+
+# Simple quick glance at the data (all categories)
+fixed %>% group_by(complex, trajectory, masked) %>% summarise(t = mean(t)) %>% arrange(t)
 
 # Descriptive statistics --------------------------------------------------
 
@@ -103,72 +114,79 @@ tribble(
   "mean_trials_pp", dt %>% group_by(id) %>% summarise(n = n()) %>% pull(n) %>% mean(),
   "mean_successful_trials_pp", ok %>% group_by(id) %>% summarise(n = n()) %>% pull(n) %>% mean(),
   "mean_good_trials_pp", clean %>% group_by(id) %>% summarise(n = n()) %>% pull(n) %>% mean(),
-  "n_participants_with_all_tts", unique(final$id) %>% length(),
-  "mean_good_trials_pp_in_test_set", final %>% group_by(id) %>% summarise(n = n()) %>% pull(n) %>% mean(),
+  "n_participants_with_both_CO_trials", unique(for_t$id) %>% length()
 )
 
-# Primary analysis --------------------------------------------------------
+# Analysis --------------------------------------------------------
 #
-# T-test of complex orientation masked vs complex orientation unmasked
-# We would expect to see a significant effect here to indicate change blindness
-# has occurred.
+# Bayes Factor of complex orientation masked - complex orientation unmasked.
+# The null distribution is uniform in the range 0:1000ms difference.
 #
-# This is a paired t-test on means.
-for_t <- fixed %>%
-  filter(complex == 'complex', trajectory == 'orientation') %>%
-  group_by(id, masked) %>%
-  summarise(t = mean(t), .groups = 'drop') %>%
-  nest(d = -id) %>%
-  mutate(ok = map_lgl(d, ~ nrow(.) == 2)) %>%
-  filter(ok) %>%
-  unnest(cols = d)
-t.test(t ~ masked, data = for_t, paired = T)
-
-# Secondary analysis ------------------------------------------------------
-
-# And same for trajectory trials
-# We would expect to see a significant effect here to indicate change blindness
-# has occurred.
-for_t_trajectory <- fixed %>%
-  filter(complex == 'complex', trajectory == 'trajectory') %>%
-  group_by(id, masked) %>%
-  summarise(t = mean(t), .groups = 'drop') %>%
-  nest(d = -id) %>%
-  mutate(ok = map_lgl(d, ~ nrow(.) == 2)) %>%
-  filter(ok) %>%
-  unnest(cols = d)
-t.test(t ~ masked, data = for_t_trajectory, paired = T)
-
-# Change blindness is defined as the interaction between masking and complexity.
-# We may see main effects and interactions, but the complex:masked interaction
-# is what we actually care about.
+# The alternative (expected) distribution is half-normal with mean=1000, sd=2000
 #
-# We want a within-subjects ANOVA because all subjects do all conditions
-ezANOVA(
-  data = final,
-  dv = t,
-  wid = id,
-  within = c('complex', 'trajectory', 'masked')
-)
+# 1000ms is the minimum effect size of interest, and 2000 = 3000 - 1000 where
+# 3000ms is the expected effect size (and 1000ms is the minimum effect size of interest)
+#
+# The Bayes Factor will tell us how much more likely it is that masked trials
+# take participants about 3s longer to solve than unmasked trials,
+# expressed as a ratio of alternative:null.
 
-# Details
-# Means for each trial type
-final %>%
-  group_by(complex, trajectory, masked) %>%
-  reframe(mean_cl_normal(t))
+for_t_diff <- for_t %>%
+  pivot_wider(names_from = masked, values_from = t) %>%
+  mutate(diff = masked - unmasked)
+diffs <- pull(for_t_diff, diff)
 
-# Many participants have missing trial types, making them invalid for
-# within-subjects ANOVA. This means that lots of participants need to be
-# excluded.
-# Another approach is a between subjects analysis on mean t per trial type.
-# This gives us a sense of whether the effect pertains in the group as a whole.
-by_tt <- fixed %>%
-  group_by(id, complex, trajectory, masked) %>%
-  summarise(t = mean(t), .groups = 'drop')
-ezANOVA(
-  data = by_tt,
-  dv = t,
-  wid = id,
-  between = c('complex', 'trajectory', 'masked')
-)
+# Summarise the data as a likelihood curve
+d_data <- likelihood(family = 'normal', mean = mean(diffs), sd = sd(diffs))
+plot(d_data)
 
+# minimum effect size of interest
+meoi <- 1000
+
+# Define the null distribution
+d_h0 <- prior(family = 'uniform', min = 0, max = meoi)
+plot(d_h0)
+m_h0 <- d_data * d_h0
+i_h0 <- integral(m_h0)
+
+# Define the alternate distribution
+d_h1 <- prior(family = 'normal', mean = meoi, sd = 3000 - meoi, range = c(meoi, Inf))
+plot(d_h1)
+m_h1 <- d_data * d_h1
+i_h1 <- integral(m_h1)
+
+bf <- i_h1 / i_h0
+print(paste("BayesFactor Alternate/Null =", round(bf, 3)))
+
+# When trying to plot stuff, we get integral errors.
+# This is something to do with the range of the half-normal distribution -
+# setting the range to c(0, Inf) works fine.
+p_h0 <- extract_predictions(m_h0)
+p_h1 <- extract_predictions(m_h1)
+plot(p_h0)
+plot(p_h1)  # Integral error
+# The visual compare errors:
+# visual_compare(p_h0, p_h1, ratio = T)
+
+
+# Visualise data ----------------------------------------------------------
+
+ggplot(for_t, aes(x = masked, y = t, group = masked)) +
+  geom_boxplot(outlier.color = NA, aes(fill = masked, colour = masked), linewidth = 2) +
+  geom_point(aes(group = id), alpha = 0.3) +
+  geom_line(aes(group = id), alpha = 0.3) +
+  stat_summary(linewidth = 2, geom = 'errorbar', fun.data = 'mean_cl_normal', width = 0.1) +
+  stat_summary(aes(group = 1), linewidth = 2, geom = 'line', fun = 'mean') +
+  scale_x_discrete(limits = rev) +  # flip x axis so unmasked is first
+  theme_light()
+
+# vs. minimum effect size of interest
+diffs <- for_t %>%
+  pivot_wider(names_from = masked, values_from = t) %>%
+  mutate(diff = masked - unmasked)
+
+ggplot(diffs, aes(x = diff)) +
+  annotate(geom = 'rect', xmin = 1000, xmax = Inf, ymin = 0, ymax = Inf, fill = 'pink') +
+  annotate(geom = 'rect', xmin = -Inf, xmax = 1000, ymin = 0, ymax = Inf, fill = 'lightblue') +
+  geom_histogram(binwidth = 500) +
+  theme_light()
