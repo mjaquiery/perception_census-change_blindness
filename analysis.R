@@ -137,7 +137,9 @@ for_t_diff <- for_t %>%
 diffs <- pull(for_t_diff, diff)
 
 # Summarise the data as a likelihood curve
-d_data <- likelihood(family = 'normal', mean = mean(diffs), sd = sd(diffs))
+# The SD of the likelihood is the SE of the data.
+se = sd(diffs) / sqrt(length(diffs))
+d_data <- likelihood(family = 'normal', mean = mean(diffs), sd = se)
 plot(d_data)
 
 # minimum effect size of interest
