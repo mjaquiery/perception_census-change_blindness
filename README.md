@@ -33,11 +33,10 @@ They will be a table with one row per trial and have the following columns:
 
 ## Analysis
 
-The primary analysis is a within-subjects ANOVA of all successful trials where the response time is less than 1 minute.
-We expect to see an interaction between complexity and masking (complex masked trials should take longer than non-complex or non-masked trials).
-
-We also include direct t-tests of complex trials across masking condition separately for dynamic and static trials.
-Anyone interested in classic change blindness results only should focus on the t-test on the static data.
+The analysis is a Bayesian analysis of complex static trials across masking condition.
+The likelihood derived from the observed data is compared against two models:
+a null hypothesis model describing effect sizes in the 0-1s range; 
+and an alternate hypothesis describing effect sizes in the ~ 1-4s range.
 
 ## Write-up 
 

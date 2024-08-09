@@ -160,15 +160,14 @@ i_h1 <- integral(m_h1)
 bf <- i_h1 / i_h0
 print(paste("BayesFactor Alternate/Null =", round(bf, 3)))
 
-# When trying to plot stuff, we get integral errors.
-# This is something to do with the range of the half-normal distribution -
-# setting the range to c(0, Inf) works fine.
+# We can plot both the individual predictions
 p_h0 <- extract_predictions(m_h0)
 p_h1 <- extract_predictions(m_h1)
 plot(p_h0)
-plot(p_h1)  # Integral error
-# The visual compare errors:
-# visual_compare(p_h0, p_h1, ratio = T)
+plot(p_h1)
+# And a comparison between them
+visual_compare(p_h1, p_h0)
+visual_compare(p_h1, p_h0, ratio = T)
 
 
 # Visualise data ----------------------------------------------------------
