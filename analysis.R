@@ -46,7 +46,10 @@ library(bayesplay)
 
 # Load data ---------------------------------------------------------------
 
-d <- read_csv("data/preprocessed.csv")
+# d <- read_csv("data/preprocessed.csv")
+
+d <- read_csv("data/full_output.csv") %>%
+  rename(id = test_session_id)
 
 # Apply trial type information
 #
