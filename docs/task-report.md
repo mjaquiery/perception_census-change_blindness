@@ -16,6 +16,18 @@ A screenshot of the task screen and a schematic of the structure of each trial i
 
 ![left) Screenshot of the 700x700 pixel working area of the screen showing rectangles of random colours (selected from an approved region of colour-space) which moved in straight lines through the working area. After 700ms one of the rectangles would alter either its orientation or its trajectory by 90° or 270°. The task for the participants was to identify which of the rectangles had undergone this change. In the simple scene condition only two rectangles were presented; the complex scene condition presented six rectangles as shown. right) ‘Flicker’ paradigm procedure. The initial scene (A) was displayed for 700ms, then a mask was put up for 200ms (masked condition) or 0ms (unmasked condition) before the initial scene was replaced with the altered scene (A’). The altered scene was displayed for 700ms and then masked and reverted to the initial scene. The process was repeated until the participant generated a response.](img/figure1.png)
 
+### Results 
+
+Analysis conducted as per the pre-registered plan, using a version of the pre-registered script amended to change the path of the data file and to account for the identity column having a different name in the full data file compared to the sample data file.
+
+Analysis was restricted to the traditional demonstration of change blindness, removing data from trials where the rectangles were moving or where there were only two rectangles. 
+Participants' average increase in response time from unmasked to masked trials was 3841.116ms, with a standard deviation of 3817.032ms and a 95% confidence interval of [3752.971, 3929.261]ms. 
+
+The response times for masked trials (mean 6000.932ms, sd 3957.22ms) were substantially greater than those for unmasked trials  (mean 2159.816ms, sd 2256.264ms). 
+The average response time for masked trials was about three times longer than the average response time for unmasked trials.
+This observation, that masked trials take substantially longer than unmasked trials, demonstrates the change blindness phenomenon described in the literature.
+
+![Histogram of differences in response times between trials (unmasked - masked). The data are split into 500ms bins, and the count represents the number of participants whose response time difference falls within that bin. The divide between blue and pink background is set at 1000ms, the prior prediction for the minimum effect size of interest as derived from the literature and previous iterations of this experiment conducted on undergraduates.](img/figure2.png)
 
 ### References
 
