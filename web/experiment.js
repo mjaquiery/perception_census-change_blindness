@@ -194,8 +194,10 @@
       const rects = placeRectangles();
       const targetIdx = Math.floor(Math.random() * N_RECTS);
 
-      // Current rotation angle for each rectangle (degrees).
-      const angles = new Array(N_RECTS).fill(0);
+      // Current rotation angle for each rectangle (degrees) – randomised.
+      const angles = Array.from({ length: N_RECTS }, () =>
+        Math.floor(Math.random() * 360),
+      );
 
       // Random onset for the change-window.
       const changeWindowOnset =
