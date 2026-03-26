@@ -36,7 +36,7 @@
   const MIN_DIST = RECT_R * 2 + 5; // ≈ 94 px
 
   /** Minimum distance from a rectangle centre to the canvas edge. */
-  const EDGE_PAD = Math.ceil(RECT_R) + 6; // 51 px
+  const EDGE_PAD = Math.ceil(RECT_R) + 26; // 71 px
 
   /** Number of rectangles per trial. */
   const N_RECTS = 10;
