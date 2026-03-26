@@ -237,7 +237,7 @@
           ctx.textAlign = 'center';
           ctx.textBaseline = 'top';
           ctx.fillText(
-            'Which rectangle changed? Click to select.',
+            'Which rectangle changed? Click or touch to select. If you don\'t know, guess.',
             CANVAS_W / 2,
             12,
           );
